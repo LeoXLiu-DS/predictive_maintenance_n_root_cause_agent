@@ -1,10 +1,11 @@
+import os
 from typing import Any, Generator, Optional, TypedDict, Annotated
 from langchain_core.tools import tool
 from langchain_core.messages import AnyMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
-from langchain_community.chat_models.databricks import ChatDatabricks
+from databricks_langchain import ChatDatabricks
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 from mlflow.langchain.chat_agent_langgraph import parse_message
@@ -17,6 +18,8 @@ from mlflow.types.agent import (
     ChatContext,
 )
 import mlflow
+
+os.environ["MLFLOW_USE_DATABRICKS_SDK_MODEL_ARTIFACTS_REPO_FOR_UC"] = "True"
 
 mlflow.langchain.autolog()
 
@@ -49,12 +52,12 @@ llm = ChatDatabricks(
 
 # Define tools
 @tool
-def anomaly_detector(vibration: float, pressure: float, temperature: float) -> str:
+def anomaly_detector(temperature: float, vibration: float, pressure: float) -> str:
     """
     Detects anomalies in equipment behavior using vibration, pressure, and temperature.
     """
     try:
-        prediction = ad_model.predict([[vibration, pressure, temperature]])
+        prediction = ad_model.predict([[temperature, vibration, pressure]])
         result = "Anomalous" if prediction[0] == -1 else "Normal"
         return f"Anomaly Detection Result: {result}"
     except Exception as e:
@@ -84,9 +87,9 @@ tools = [anomaly_detector, vector_search]
 # Define Nodes
 system_prompt = SystemMessage(
     content=(
-        "You are a predictive maintenance engineer. Answer machine maintenance queries using the search index. "
-        "If sensor data is provided, use the anomaly detection tool. "
-        "If the machine is anomalous, ask user whether RCA and resolution is required if user does not suggest anything otherwise continue the task."
+        "You are a maintenance engineer tasked with addressing machine maintenance queries, conducting root cause analysis (RCA), and recommending appropriate resolutions. Use the search index to retrieve relevant information that supports accurate and context-aware responses."
+        "When sensor data is available, analyze it using the anomaly detection tool to assess whether the machine is operating normally or exhibiting anomalous behavior. "
+        "If an anomaly is detected and the user has not provided specific instructions, prompt them to confirm whether they would like to proceed with RCA and resolution. If instructions are provided, continue with the assigned task accordingly."
     )
 )
 
