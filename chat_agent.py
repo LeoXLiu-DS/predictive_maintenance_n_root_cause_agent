@@ -87,8 +87,8 @@ tools = [anomaly_detector, vector_search]
 # Define Nodes
 system_prompt = SystemMessage(
     content=(
-        "You are a maintenance engineer tasked with addressing machine maintenance queries, conducting root cause analysis (RCA), and recommending appropriate resolutions. Use the search index to retrieve relevant information that supports accurate and context-aware responses."
-        "When sensor data is available, analyze it using the anomaly detection tool to assess whether the machine is operating normally or exhibiting anomalous behavior. "
+        "You are a maintenance engineer tasked with addressing machine maintenance queries, conducting root cause analysis (RCA), and recommending appropriate resolutions." "Use the search index to retrieve relevant information that supports accurate and context-aware responses."
+        "If sensor data is provided, analyze it using the anomaly detection tool to assess whether the machine is operating normally or exhibiting anomalous behavior. "
         "If an anomaly is detected and the user has not provided specific instructions, prompt them to confirm whether they would like to proceed with RCA and resolution. If instructions are provided, continue with the assigned task accordingly."
     )
 )
@@ -129,8 +129,8 @@ def create_agent(llm, tools, system_prompt):
     )
     builder.add_edge("tools", "assistant")
 
-    # agent = builder.compile(checkpointer=checkpointer)
-    agent = builder.compile()
+    agent = builder.compile(checkpointer=checkpointer)
+    # agent = builder.compile()
 
     return agent
 
@@ -146,7 +146,13 @@ class LangGraphChatAgent(ChatAgent):
         custom_inputs: Optional[dict[str, Any]] = None,
     ) -> ChatAgentResponse:
         request = {"messages": self._convert_messages_to_dict(messages)}
-        res = self.agent.invoke(request)
+        # res = self.agent.invoke(request)
+        if custom_inputs and 'configurable' in custom_inputs:
+            config = {"configurable": custom_inputs["configurable"]}
+        else: 
+            config = {"configurable": {'thread_id':99}}
+        res = self.agent.invoke(request, config)
+
         response = [ChatAgentMessage(**parse_message(r)) for r in res["messages"]]
         return ChatAgentResponse(messages=response)
     
@@ -157,13 +163,17 @@ class LangGraphChatAgent(ChatAgent):
         custom_inputs: Optional[dict[str, Any]] = None,
     ) -> Generator[ChatAgentChunk, None, None]:
         request = {"messages": self._convert_messages_to_dict(messages)}
-        for event in self.agent.stream(request, stream_mode="updates"):
+        if custom_inputs and 'configurable' in custom_inputs:
+            config = {"configurable": custom_inputs["configurable"]}
+        else: 
+            config = {"configurable": {'thread_id':1}}
+        for event in self.agent.stream(request, config, stream_mode="updates"):
             for node_data in event.values():
                 for m in node_data.get("messages", []):
                     msg = parse_message(m)
                     yield ChatAgentChunk(delta=ChatAgentMessage(**msg))
 
 
-pm_agent = create_agent(llm, tools, system_prompt)
-AGENT = LangGraphChatAgent(pm_agent)
-mlflow.models.set_model(AGENT)
+chat_pm_agent = create_agent(llm, tools, system_prompt)
+CHAT_AGENT = LangGraphChatAgent(chat_pm_agent)
+mlflow.models.set_model(CHAT_AGENT)
